@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Particle Christmas</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  body { position: fixed; inset: 0; touch-action: none; overscroll-behavior: none; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<script>
+'use strict';
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const TAU = Math.PI * 2;
+const rand = (a, b) => a + Math.random() * (b - a);
+
+let W = 0, H = 0;
+const isSmall = Math.min(screen.width, screen.height) < 700;
+const DPR = Math.min(window.devicePixelRatio || 1, isSmall ? 2 : 3);
+function resize() {
+  W = innerWidth; H = innerHeight;
+  cv.width = Math.round(W * DPR);
+  cv.height = Math.round(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+addEventListener('resize', resize);
+addEventListener('orientationchange', () => setTimeout(resize, 120));
+resize();
+
+const hueAt = t => (318 - t * 22 + 360) % 360;
+const drift = T => Math.sin(T * 0.18) * 14;
+
+const TREE_N = 2200, tree = [], RIBBONS = 4, TURNS = 4.6;
+for (let i = 0; i < TREE_N; i++) {
+  const accent = Math.random() < 0.15;
+  const base = {
+    size: rand(1.0, 3.0), hueJ: rand(-10, 10),
+    sat: accent ? rand(38, 62) : rand(8, 25),
+    lig: accent ? rand(72, 80) : rand(78, 93),
+    tw: rand(0, TAU), tws: rand(0.6, 2.4)
+  };
+  if (Math.random() < 0.14) {
+    tree.push(Object.assign(base, { free: true, t: Math.random(), rr: rand(0.35, 1.8), ang: rand(0, TAU) }));
+  } else {
+    const k = i % RIBBONS;
+    const t = Math.random();
+    tree.push(Object.assign(base, {
+      free: false, t,
+      ang: k * (TAU / RIBBONS) + t * TURNS * TAU + Math.sin(t * 9 + k * 1.3) * 0.35,
+      rFac: Math.pow(1 - t, 0.65) * (1 + Math.sin(t * 9.4 + k * 2.1) * 0.14) * (1 + Math.pow(1 - t, 3) * 0.4) * (0.94 + 0.14 * Math.random()),
+      rotF: 1 + (k % 3) * 0.06 + rand(-0.02, 0.02)
+    }));
+  }
+  tree[tree.length - 1].size *= (1 - (tree[tree.length - 1].t || 0) * 0.5);
+}
+
+const GAL_N = 3000, gal = [], ARMS = 3;
+for (let i = 0; i < GAL_N; i++) {
+  const d = Math.pow(Math.random(), 0.72);
+  const ang = (i % ARMS) * (TAU / ARMS) + d * 6.5 + rand(-0.3, 0.3)
+    + (Math.random() < 0.12 ? rand(0, TAU) : 0);
+  const white = Math.random() < 0.4;
+  gal.push({ d, ang, size: rand(0.6, 1.8), hueJ: rand(-14, 14), sat: white ? rand(5, 14) : rand(22, 45), lig: white ? rand(86, 95) : rand(70, 85), tw: rand(0, TAU), tws: rand(0.3, 1.4) });
+}
+
+const NEB = [
+  { ox: 0.22, oy: 0.30, r: 0.50, hue: 305, sp: 0.05 },
+  { ox: 0.82, oy: 0.42, r: 0.45, hue: 330, sp: 0.07 },
+  { ox: 0.55, oy: 0.14, r: 0.40, hue: 280, sp: 0.04 },
+  { ox: 0.12, oy: 0.70, r: 0.45, hue: 320, sp: 0.06 },
+  { ox: 0.90, oy: 0.16, r: 0.50, hue: 295, sp: 0.045 }
+];
+
+const BG_N = 720, bg = [];
+for (let i = 0; i < BG_N; i++) {
+  bg.push({ x: Math.random(), y: Math.random(), s: rand(0.4, 1.5), tw: rand(0, TAU), tws: rand(0.3, 1.6), big: Math.random() < 0.06 });
+}
+
+const MW_N = 520, mw = [];
+for (let i = 0; i < MW_N; i++) {
+  const u = Math.random();
+  mw.push({ x: u, y: 0.62 - u * 0.5 + (Math.random() + Math.random() - 1) * 0.09, s: rand(0.3, 1.0), tw: rand(0, TAU), tws: rand(0.2, 1.0) });
+}
+
+let shoots = [], nextShoot = 1.5;
+
+const FLAKE_N = 46, FLAKES = [];
+for (let i = 0; i < FLAKE_N; i++) {
+  const ang = rand(0, TAU), d = rand(10, 62);
+  FLAKES.push({ dx: Math.cos(ang) * d, dy: Math.sin(ang) * d * 0.75, s: rand(2, 7), rot: rand(0, TAU), sp: rand(-0.9, 0.9), tw: rand(0, TAU), tws: rand(0.8, 2.6) });
+}
+
+function drawTopStar(x, y, T) {
+  const pulse = 0.85 + 0.15 * Math.sin(T * 2.1);
+  const hue = 225, sat = 25;
+  ctx.globalCompositeOperation = 'lighter';
+  let g = ctx.createRadialGradient(x, y, 0, x, y, 90 * pulse);
+  g.addColorStop(0, 'hsla(' + hue + ',' + sat + '%,92%,0.9)');
+  g.addColorStop(0.25, 'hsla(' + hue + ',' + sat + '%,80%,0.35)');
+  g.addColorStop(1, 'hsla(' + hue + ',' + sat + '%,75%,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(x, y, 90 * pulse, 0, TAU); ctx.fill();
+
+  g = ctx.createRadialGradient(x, y, 0, x, y, 14);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(1, 'hsla(' + hue + ',' + sat + '%,90%,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(x, y, 14, 0, TAU); ctx.fill();
+
+  ctx.save(); ctx.translate(x, y); ctx.rotate(0.2);
+  const flare = (len, wid, al) => {
+    const lg = ctx.createLinearGradient(-len, 0, len, 0);
+    lg.addColorStop(0, 'hsla(' + hue + ',' + sat + '%,85%,0)');
+    lg.addColorStop(0.5, 'hsla(' + hue + ',' + sat + '%,95%,' + al + ')');
+    lg.addColorStop(1, 'hsla(' + hue + ',' + sat + '%,85%,0)');
+    ctx.fillStyle = lg; ctx.fillRect(-len, -wid, len * 2, wid * 2);
+  };
+  flare(120 * pulse, 1.2, 0.85); ctx.rotate(Math.PI / 2); flare(80 * pulse, 1.0, 0.6);
+  ctx.restore();
+}
+
+function drawTopFlake(x, y, T) {
+  ctx.globalCompositeOperation = 'lighter';
+  let g = ctx.createRadialGradient(x, y, 0, x, y, 110);
+  g.addColorStop(0, 'rgba(255,255,255,0.9)');
+  g.addColorStop(0.3, 'hsla(225,25%,85%,0.3)');
+  g.addColorStop(1, 'hsla(225,25%,80%,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 110, 0, TAU); ctx.fill();
+
+  ctx.save(); ctx.translate(x, y);
+  const pulse = 0.85 + 0.15 * Math.sin(T * 2.1);
+  const ray = (len, wid, al, rot) => {
+    ctx.save(); ctx.rotate(rot);
+    const lg = ctx.createLinearGradient(-len, 0, len, 0);
+    lg.addColorStop(0, 'rgba(255,255,255,0)'); lg.addColorStop(0.5, 'rgba(255,255,255,' + al + ')'); lg.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = lg; ctx.fillRect(-len, -wid, len * 2, wid * 2); ctx.restore();
+  };
+  ray(130 * pulse, 1.5, 0.95, 0); ray(90 * pulse, 1.3, 0.75, Math.PI / 2); ray(55 * pulse, 1.0, 0.5, Math.PI / 4); ray(55 * pulse, 1.0, 0.5, -Math.PI / 4);
+  for (const f of FLAKES) {
+    const tw = 0.5 + 0.5 * Math.sin(T * f.tws + f.tw);
+    ctx.save(); ctx.translate(f.dx, f.dy); ctx.rotate(f.rot + T * f.sp);
+    const s = f.s * (0.7 + 0.6 * tw);
+    ctx.fillStyle = 'rgba(255,255,255,' + (0.22 + 0.6 * tw).toFixed(3) + ')'; ctx.fillRect(-s / 2, -s / 2, s, s); ctx.restore();
+  }
+  ctx.restore();
+
+  g = ctx.createRadialGradient(x, y, 0, x, y, 12);
+  g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 12, 0, TAU); ctx.fill();
+}
+
+let last = performance.now(), T = 0;
+function frame(now) {
+  const dt = Math.min((now - last) / 1000, 0.05); last = now; T += dt;
+  const cx = W * 0.60, baseY = H * 0.80, topY = H * 0.18;
+  const R = Math.min(W * (W < H ? 0.44 : 0.24), H * 0.26);
+  const treeH = baseY - topY, Rg = R * 2.1;
+  const small = Math.min(W, H) < 700, treeN = small ? 1400 : TREE_N, galN = small ? 1900 : GAL_N;
+
+  ctx.globalCompositeOperation = 'source-over';
+  const bgGrad = ctx.createRadialGradient(cx, H * 0.5, 0, cx, H * 0.5, Math.max(W, H) * 0.75);
+  bgGrad.addColorStop(0, '#0a0d1e'); bgGrad.addColorStop(0.55, '#05070f'); bgGrad.addColorStop(1, '#010206');
+  ctx.fillStyle = bgGrad; ctx.fillRect(0, 0, W, H);
+  ctx.globalCompositeOperation = 'lighter';
+
+  for (const n of NEB) {
+    const hue = (n.hue + drift(T) * 2) % 360;
+    const nx = (n.ox + Math.sin(T * n.sp + n.hue) * 0.05) * W;
+    const ny = (n.oy + Math.cos(T * n.sp * 1.3 + n.hue) * 0.04) * H;
+    const nr = n.r * Math.max(W, H);
+    const ng = ctx.createRadialGradient(nx, ny, 0, nx, ny, nr);
+    ng.addColorStop(0, 'hsla(' + hue + ',70%,65%,0.09)'); ng.addColorStop(1, 'hsla(' + hue + ',85%,60%,0)');
+    ctx.fillStyle = ng; ctx.fillRect(0, 0, W, H);
+  }
+
+  for (const m of mw) {
+    const a = (0.3 + 0.5 * (0.5 + 0.5 * Math.sin(T * m.tws + m.tw))) * 0.45;
+    const hue = (295 + (m.x - 0.5) * 50 + drift(T) * 0.5) % 360;
+    ctx.fillStyle = 'hsla(' + hue.toFixed(0) + ',30%,90%,' + a.toFixed(3) + ')'; ctx.beginPath(); ctx.arc(m.x * W, m.y * H, m.s, 0, TAU); ctx.fill();
+  }
+
+  for (const s of bg) {
+    const a = (0.35 + 0.65 * (0.5 + 0.5 * Math.sin(T * s.tws + s.tw))) * 0.9;
+    const hue = (300 + (s.x - 0.5) * 70 + drift(T) * 0.5) % 360;
+    const sx = s.x * W, sy = s.y * H * 0.92;
+    ctx.fillStyle = 'hsla(' + hue.toFixed(0) + ',30%,92%,' + a.toFixed(3) + ')'; ctx.beginPath(); ctx.arc(sx, sy, s.s, 0, TAU); ctx.fill();
+    if (s.big) {
+      const l = s.s * 5;
+      ctx.fillStyle = 'hsla(' + hue.toFixed(0) + ',30%,95%,' + (a * 0.55).toFixed(3) + ')'; ctx.fillRect(sx - l, sy - 0.5, l * 2, 1); ctx.fillRect(sx - 0.5, sy - l, 1, l * 2);
+    }
+  }
+
+  const gGlow = ctx.createRadialGradient(cx, baseY, 0, cx, baseY, Rg);
+  gGlow.addColorStop(0, 'rgba(120,140,220,0.10)'); gGlow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = gGlow; ctx.fillRect(0, 0, W, H);
+
+  const gRot = T * 0.14;
+  ctx.save(); ctx.translate(cx, baseY); ctx.scale(1, 0.35);
+  const coreG = ctx.createRadialGradient(0, 0, 0, 0, 0, Rg * 0.55);
+  coreG.addColorStop(0, 'hsla(45,85%,72%,0.4)'); coreG.addColorStop(0.45, 'hsla(55,75%,62%,0.14)'); coreG.addColorStop(1, 'hsla(55,75%,62%,0)');
+  ctx.fillStyle = coreG; ctx.fillRect(-Rg * 0.6, -Rg * 0.6, Rg * 1.2, Rg * 1.2); ctx.restore();
+
+  for (let gi = 0; gi < galN; gi++) {
+    const p = gal[gi], a = p.ang + gRot, depth = (Math.cos(a) + 1) / 2;
+    const x = cx + Math.sin(a) * p.d * Rg, y = baseY + Math.cos(a) * p.d * Rg * 0.33;
+    const tw = 0.55 + 0.45 * Math.sin(T * p.tws + p.tw), al = (0.22 + 0.55 * depth) * tw;
+    const hue = (45 + p.d * 260 + p.hueJ + drift(T)) % 360;
+    ctx.fillStyle = 'hsla(' + hue.toFixed(1) + ',' + p.sat + '%,65%,' + (al * 0.22).toFixed(3) + ')'; ctx.beginPath(); ctx.arc(x, y, p.size * 3.5 * (0.75 + 0.35 * depth), 0, TAU); ctx.fill();
+    ctx.fillStyle = 'hsla(' + hue.toFixed(1) + ',' + p.sat + '%,' + p.lig + '%,' + al.toFixed(3) + ')'; ctx.beginPath(); ctx.arc(x, y, p.size * (0.75 + 0.35 * depth), 0, TAU); ctx.fill();
+  }
+
+  const tRot = T * 0.55;
+  for (let ti = 0; ti < treeN; ti++) {
+    const p = tree[ti]; let a, r, x, y;
+    if (p.free) {
+      a = p.ang + T * 0.18; r = p.rr * R;
+      x = cx + Math.sin(a) * r * 0.95; y = baseY - p.t * treeH * 0.92 + Math.cos(a) * r * 0.28;
+    } else {
+      a = p.ang + tRot * p.rotF; r = p.rFac * R;
+      x = cx + Math.sin(a) * r; y = baseY - p.t * treeH + Math.cos(a) * r * 0.32;
+    }
+    const depth = (Math.cos(a) + 1) / 2, tw = 0.55 + 0.45 * Math.sin(T * p.tws + p.tw), al = (0.35 + 0.65 * depth) * tw;
+    const flash = tw > 0.88, hue = (hueAt(p.t) + p.hueJ + drift(T)) % 360;
+    ctx.fillStyle = 'hsla(' + hue.toFixed(1) + ',60%,82%,' + (al * 0.3).toFixed(3) + ')'; ctx.beginPath(); ctx.arc(x, y, p.size * 3.8 * (0.8 + 0.4 * depth), 0, TAU); ctx.fill();
+    ctx.fillStyle = flash ? 'hsla(0,0%,96%,' + Math.min(1, al * 1.4).toFixed(3) + ')' : 'hsla(' + hue.toFixed(1) + ',' + p.sat + '%,' + p.lig + '%,' + al.toFixed(3) + ')';
+    const coreR = p.size * (0.8 + 0.4 * depth); ctx.beginPath(); ctx.arc(x, y, coreR, 0, TAU); ctx.fill();
+    if (flash) {
+      const len = coreR * 6;
+      ctx.fillStyle = 'hsla(' + hue.toFixed(1) + ',50%,90%,' + (al * 0.5).toFixed(3) + ')'; ctx.fillRect(x - len, y - 0.6, len * 2, 1.2); ctx.fillRect(x - 0.6, y - len, 1.2, len * 2);
+    }
+  }
+
+  drawTopStar(cx, topY - 6, T);
+  drawTopFlake(cx, topY - R * 0.38 + Math.sin(T * 0.8) * 8, T);
+
+  nextShoot -= dt;
+  if (nextShoot <= 0) {
+    shoots.push({ x: rand(W * 0.2, W * 0.95), y: rand(H * 0.05, H * 0.35), vx: -rand(380, 560), vy: rand(140, 240), life: rand(0.6, 1.0) }); nextShoot = rand(1.5, 5);
+  }
+  for (let i = shoots.length - 1; i >= 0; i--) {
+    const s = shoots[i]; s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt;
+    if (s.life <= 0) { shoots.splice(i, 1); continue; }
+    const fade = Math.min(1, s.life * 2.5), lg = ctx.createLinearGradient(s.x, s.y, s.x - s.vx * 0.09, s.y - s.vy * 0.09);
+    lg.addColorStop(0, 'rgba(255,255,255,' + (0.9 * fade).toFixed(3) + ')'); lg.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.strokeStyle = lg; ctx.lineWidth = 1.6; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(s.x - s.vx * 0.09, s.y - s.vy * 0.09); ctx.stroke();
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+let lastTap = 0;
+cv.addEventListener('touchend', () => {
+  const now = Date.now();
+  if (now - lastTap < 300) {
+    if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen(); lastTap = 0;
+  } else lastTap = now;
+});
+cv.addEventListener('dblclick', () => {
+  if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen();
+});
+</script>
+</body>
+</html>
